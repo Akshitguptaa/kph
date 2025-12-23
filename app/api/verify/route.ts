@@ -58,6 +58,19 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        const TWENTY_FOUR_HOURS = 24 * 60 * 60;
+        const deadlineSeconds = postedAtSeconds + TWENTY_FOUR_HOURS;
+
+        if (submission.solveTimeSeconds > deadlineSeconds) {
+            const hoursLate = Math.floor((submission.solveTimeSeconds - deadlineSeconds) / 3600);
+            return NextResponse.json(
+                {
+                    error: `Submission is outside the 24-hour window. You submitted ${hoursLate} hour(s) after the deadline.`,
+                },
+                { status: 400 }
+            );
+        }
+
         await prisma.user.upsert({
             where: { handle },
             create: { handle },
@@ -114,7 +127,6 @@ export async function POST(request: NextRequest) {
             timeTaken: submission.timeTakenSeconds,
         });
     } catch (error) {
-        console.error("Verification error:", error);
         return NextResponse.json(
             { error: "Internal server error" },
             { status: 500 }

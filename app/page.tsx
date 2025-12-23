@@ -28,6 +28,7 @@ export default function Home() {
   const [message, setMessage] = useState<{
     type: "success" | "error";
     text: string;
+    problemId: number;
   } | null>(null);
   const [groupedProblems, setGroupedProblems] = useState<GroupedProblems>({});
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
@@ -52,7 +53,6 @@ export default function Home() {
     try {
       Promise.all([fetchProblems(), fetchLeaderboard()]);
     } catch (error) {
-      console.error("Error fetching data:", error);
     }
   };
 
@@ -65,7 +65,6 @@ export default function Home() {
         setCurrentTime(new Date(data.timestamp));
       }
     } catch (error) {
-      console.error("Error fetching server time:", error);
       setServerTime(new Date());
       setCurrentTime(new Date());
     }
@@ -79,7 +78,6 @@ export default function Home() {
         setGroupedProblems(data);
       }
     } catch (error) {
-      console.error("Error fetching problems:", error);
     }
   };
 
@@ -91,7 +89,6 @@ export default function Home() {
         setLeaderboard(data);
       }
     } catch (error) {
-      console.error("Error fetching leaderboard:", error);
     }
   };
 
@@ -100,6 +97,7 @@ export default function Home() {
       setMessage({
         type: "error",
         text: "Please enter your Codeforces handle",
+        problemId,
       });
       return;
     }
@@ -120,14 +118,15 @@ export default function Home() {
         setMessage({
           type: "success",
           text: `Verified! Your rank: #${data.rank} (${formatTime(data.timeTaken)})`,
+          problemId,
         });
         setHandle("");
         await fetchLeaderboard();
       } else {
-        setMessage({ type: "error", text: data.error || "Verification failed" });
+        setMessage({ type: "error", text: data.error || "Verification failed", problemId });
       }
     } catch (error) {
-      setMessage({ type: "error", text: "Network error. Please try again." });
+      setMessage({ type: "error", text: "Network error. Please try again.", problemId });
     } finally {
       setLoading(null);
     }
@@ -292,7 +291,7 @@ export default function Home() {
                       <div className="space-y-4 pt-4">
                         <button
                           onClick={() => handleVerify(problem.id)}
-                          disabled={loading !== null || !handle.trim()}
+                          disabled={loading === problem.id || !handle.trim()}
                           className="text-[#009900] hover:text-[#99ff99] hover:translate-x-1 transform transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                         >
                           {loading === problem.id
@@ -300,7 +299,8 @@ export default function Home() {
                             : "[ Verify Solution ]"}
                         </button>
 
-                        {message && (
+
+                        {message && message.problemId === problem.id && (
                           <div
                             className={`pl-4 py-2 border-l-2 ${message.type === "success"
                               ? "border-[#00cc00] text-[#00cc00]"
