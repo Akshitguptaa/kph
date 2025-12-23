@@ -4,11 +4,35 @@ import { getAcceptedSubmission } from "@/lib/codeforces";
 
 export async function POST(request: NextRequest) {
     try {
-        const { handle, problemId } = await request.json();
+        const body = await request.json();
+        const { handle, handles, problemId, standingsJson } = body;
 
-        if (!handle || !problemId) {
+        const handlesToCheck: string[] = handles || (handle ? [handle] : []);
+
+        if (handlesToCheck.length === 0 || !problemId) {
             return NextResponse.json(
-                { error: "Handle and problemId are required" },
+                { error: "Handle(s) and problemId are required" },
+                { status: 400 }
+            );
+        }
+
+        if (!standingsJson) {
+            return NextResponse.json(
+                { error: "Standings data is required. Please provide contest standings JSON." },
+                { status: 400 }
+            );
+        }
+
+        let spectatorData;
+        try {
+            if (typeof standingsJson === 'string') {
+                spectatorData = JSON.parse(standingsJson);
+            } else {
+                spectatorData = standingsJson;
+            }
+        } catch (e) {
+            return NextResponse.json(
+                { error: "Invalid JSON format for standings data" },
                 { status: 400 }
             );
         }
@@ -24,65 +48,65 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const existingSubmission = await prisma.submission.findUnique({
-            where: {
-                userHandle_problemId: {
-                    userHandle: handle,
-                    problemId: parseInt(problemId),
-                },
-            },
-        });
+        const postedAtSeconds = Math.floor(problem.postedAt.getTime() / 1000);
+        const TWENTY_FOUR_HOURS = 24 * 60 * 60;
+        const deadlineSeconds = postedAtSeconds + TWENTY_FOUR_HOURS;
 
-        if (existingSubmission) {
-            return NextResponse.json(
-                { error: "You have already verified this problem" },
-                { status: 400 }
+        let validSubmission = null;
+        let successfulHandle = null;
+
+        for (const handleToCheck of handlesToCheck) {
+            const existingSubmission = await prisma.submission.findUnique({
+                where: {
+                    userHandle_problemId: {
+                        userHandle: handleToCheck,
+                        problemId: parseInt(problemId),
+                    },
+                },
+            });
+
+            if (existingSubmission) {
+                return NextResponse.json(
+                    { error: `Handle "${handleToCheck}" has already verified this problem` },
+                    { status: 400 }
+                );
+            }
+
+            const submission = await getAcceptedSubmission(
+                handleToCheck,
+                spectatorData,
+                problem.cfIndex,
+                postedAtSeconds
             );
+
+            if (submission && submission.solveTimeSeconds <= deadlineSeconds) {
+                validSubmission = submission;
+                successfulHandle = handleToCheck;
+                break;
+            }
         }
 
-        const postedAtSeconds = Math.floor(problem.postedAt.getTime() / 1000);
-        const submission = await getAcceptedSubmission(
-            handle,
-            problem.cfContestId,
-            problem.cfIndex,
-            postedAtSeconds
-        );
-
-        if (!submission) {
+        if (!validSubmission || !successfulHandle) {
             return NextResponse.json(
                 {
                     error:
-                        "No valid submission found. Make sure you solved the problem after it was posted and have an OK verdict.",
+                        "No valid submission found for any of the provided handles. Make sure at least one handle solved the problem within 24 hours of posting.",
                 },
                 { status: 404 }
             );
         }
 
-        const TWENTY_FOUR_HOURS = 24 * 60 * 60;
-        const deadlineSeconds = postedAtSeconds + TWENTY_FOUR_HOURS;
-
-        if (submission.solveTimeSeconds > deadlineSeconds) {
-            const hoursLate = Math.floor((submission.solveTimeSeconds - deadlineSeconds) / 3600);
-            return NextResponse.json(
-                {
-                    error: `Submission is outside the 24-hour window. You submitted ${hoursLate} hour(s) after the deadline.`,
-                },
-                { status: 400 }
-            );
-        }
-
         await prisma.user.upsert({
-            where: { handle },
-            create: { handle },
+            where: { handle: successfulHandle },
+            create: { handle: successfulHandle },
             update: {},
         });
 
         await prisma.submission.create({
             data: {
-                userHandle: handle,
+                userHandle: successfulHandle,
                 problemId: parseInt(problemId),
-                timeTaken: submission.timeTakenSeconds,
-                dailyRank: 0,
+                timeTaken: validSubmission.timeTakenSeconds,
             },
         });
 
@@ -91,31 +115,23 @@ export async function POST(request: NextRequest) {
             orderBy: { timeTaken: "asc" },
         });
 
-        for (let i = 0; i < allSubmissions.length; i++) {
-            await prisma.submission.update({
-                where: { id: allSubmissions[i].id },
-                data: { dailyRank: i + 1 },
-            });
-        }
-
-        const affectedUsers = new Set(allSubmissions.map((s: { userHandle: string }) => s.userHandle));
+        const affectedUsers = new Set(allSubmissions.map(s => s.userHandle));
 
         for (const userHandle of affectedUsers) {
             const userSubmissions = await prisma.submission.findMany({
                 where: { userHandle },
             });
 
-            const totalRank = userSubmissions.reduce(
-                (sum: number, sub: { dailyRank: number }) => sum + sub.dailyRank,
+            const totalPenalty = userSubmissions.reduce(
+                (sum, sub) => sum + sub.timeTaken,
                 0
             );
-            const avgRank = totalRank / userSubmissions.length;
 
             await prisma.user.update({
                 where: { handle: userHandle },
                 data: {
-                    avgRank,
                     totalSolved: userSubmissions.length,
+                    totalPenalty,
                 },
             });
         }
@@ -123,8 +139,9 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
             success: true,
             message: "Solution verified successfully!",
-            rank: allSubmissions.findIndex((s: { userHandle: string }) => s.userHandle === handle) + 1,
-            timeTaken: submission.timeTakenSeconds,
+            handle: successfulHandle,
+            rank: allSubmissions.findIndex(s => s.userHandle === successfulHandle) + 1,
+            timeTaken: validSubmission.timeTakenSeconds,
         });
     } catch (error) {
         return NextResponse.json(

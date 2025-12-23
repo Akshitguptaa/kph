@@ -9,17 +9,19 @@ export async function GET() {
                     gt: 0,
                 },
             },
-            orderBy: [{ avgRank: "asc" }, { totalSolved: "desc" }],
+            orderBy: [
+                { totalSolved: "desc" },
+                { totalPenalty: "asc" },
+            ],
             select: {
                 handle: true,
-                avgRank: true,
                 totalSolved: true,
+                totalPenalty: true,
             },
         });
 
         return NextResponse.json(users);
     } catch (error) {
-        console.error("Error fetching leaderboard:", error);
         return NextResponse.json(
             { error: "Internal server error" },
             { status: 500 }

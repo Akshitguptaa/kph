@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Clock, ExternalLink, Star, ChevronDown, ChevronRight } from "lucide-react";
+import { Clock, ExternalLink, Star, ChevronDown, ChevronRight, Upload, X } from "lucide-react";
 
 interface DailyProblem {
   id: number;
   cfContestId: number;
   cfIndex: string;
   title: string;
+  contestKey: string;
   postedAt: string;
 }
 
@@ -17,9 +18,8 @@ interface GroupedProblems {
 
 interface LeaderboardEntry {
   handle: string;
-  avgRank: number;
   totalSolved: number;
-  avgTimeOfAC?: number;
+  totalPenalty: number;
 }
 
 export default function Home() {
@@ -35,19 +35,19 @@ export default function Home() {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [serverTime, setServerTime] = useState<Date | null>(null);
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
+  const [uploadedHandles, setUploadedHandles] = useState<string[]>([]);
+  const [fileName, setFileName] = useState<string | null>(null);
 
   useEffect(() => {
     fetchData();
     fetchServerTime();
 
     const interval = setInterval(() => {
-      if (serverTime) {
-        setCurrentTime(new Date());
-      }
+      setCurrentTime(new Date());
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [serverTime]);
+  }, []);
 
   const fetchData = async () => {
     try {
@@ -92,11 +92,46 @@ export default function Home() {
     }
   };
 
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch("/api/upload-handles", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        setUploadedHandles(data.handles);
+        setFileName(file.name);
+        setHandle("");
+      } else {
+        alert(data.error || "Failed to upload file");
+      }
+    } catch (error) {
+      alert("Error uploading file");
+    }
+  };
+
+  const clearUploadedFile = () => {
+    setUploadedHandles([]);
+    setFileName(null);
+  };
+
   const handleVerify = async (problemId: number) => {
-    if (!handle.trim()) {
+    const hasUploadedHandles = uploadedHandles.length > 0;
+    const hasSingleHandle = handle.trim().length > 0;
+
+    if (!hasUploadedHandles && !hasSingleHandle) {
       setMessage({
         type: "error",
-        text: "Please enter your Codeforces handle",
+        text: "Please enter your Codeforces handle or upload a file with handles",
         problemId,
       });
       return;
@@ -106,21 +141,43 @@ export default function Home() {
     setMessage(null);
 
     try {
+      const problem = allProblems.find(p => p.id === problemId);
+      if (!problem || !problem.contestKey) {
+        setMessage({ type: "error", text: "Contest key not found for this problem", problemId });
+        setLoading(null);
+        return;
+      }
+
+      const { fetchAndParseSpectator } = await import('@/lib/spectator');
+      const spectatorData = await fetchAndParseSpectator(problem.contestKey);
+
+      if (!spectatorData) {
+        setMessage({ type: "error", text: "Failed to fetch from Codeforces. Try again.", problemId });
+        setLoading(null);
+        return;
+      }
+
+      const requestBody = hasUploadedHandles
+        ? { handles: uploadedHandles, problemId, spectatorData }
+        : { handle: handle.trim(), problemId, spectatorData };
+
       const res = await fetch("/api/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ handle: handle.trim(), problemId }),
+        body: JSON.stringify(requestBody),
       });
 
       const data = await res.json();
 
       if (res.ok) {
+        const handleUsed = data.handle || handle.trim();
         setMessage({
           type: "success",
-          text: `Verified! Your rank: #${data.rank} (${formatTime(data.timeTaken)})`,
+          text: `Verified for ${handleUsed}! Rank: #${data.rank} (${formatTime(data.timeTaken)})`,
           problemId,
         });
         setHandle("");
+        clearUploadedFile();
         await fetchLeaderboard();
       } else {
         setMessage({ type: "error", text: data.error || "Verification failed", problemId });
@@ -211,10 +268,11 @@ export default function Home() {
   return (
     <div className="min-h-screen flex flex-col justify-between px-6 py-12 sm:px-8 md:px-12 lg:px-16">
       <div className="w-full">
+        {/* Removed 'items-start' here so the sidebar stretches to match the left column height */}
+        <div className="w-full flex flex-col lg:flex-row justify-between gap-12">
 
-        <div className="w-full flex flex-col lg:flex-row justify-between gap-12 items-start">
           <div className="flex-1 w-full max-w-7xl space-y-16">
-
+            {/* ... Left Column Content (Header, Problem, Leaderboard) ... */}
             <header className="text-center space-y-6 relative">
               <pre
                 className="text-[#00cc00] text-sm sm:text-base md:text-lg leading-tight font-medium"
@@ -239,84 +297,7 @@ export default function Home() {
               <div className="h-px w-32 mx-auto bg-[#666666]"></div>
             </header>
 
-            <section className="space-y-4">
-              <div className="space-y-3 pl-4">
-                <label htmlFor="handle" className="block text-[#cccccc]">
-                  Enter your Codeforces Handle:
-                </label>
-                <input
-                  id="handle"
-                  type="text"
-                  value={handle}
-                  onChange={(e) => setHandle(e.target.value)}
-                  placeholder="e.g., tourist"
-                  disabled={loading !== null}
-                  className="w-full max-w-md bg-transparent border border-[#666666] px-4 py-3 text-[#cccccc] placeholder-[#666666] focus:border-[#00cc00] disabled:opacity-50 disabled:cursor-not-allowed"
-                />
-              </div>
-            </section>
 
-            <section className="space-y-8">
-              <h2 className="text-[#00cc00] text-xl border-b border-[#333333] pb-3">
-                --- Today's Challenge ---
-              </h2>
-
-              {activeProblems.length > 0 ? (
-                <div className="space-y-6 pl-4">
-                  {activeProblems.map((problem) => (
-                    <div key={problem.id} className="space-y-4">
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-3 text-sm text-[#666666]">
-                          <Clock className="w-4 h-4" />
-                          <span>{getTimeRemaining(problem.postedAt)}</span>
-                        </div>
-                        <h3 className="text-[#ffff66] text-lg font-medium">
-                          {problem.cfContestId}{problem.cfIndex}. {problem.title}
-                        </h3>
-                      </div>
-
-                      <a
-                        href={`https://codeforces.com/problemset/problem/${problem.cfContestId}/${problem.cfIndex}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 text-[#009900] hover:text-[#99ff99] hover:translate-x-1 transform transition-all"
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                        <span>[ View Problem on Codeforces ]</span>
-                      </a>
-
-                      <div className="space-y-4 pt-4">
-                        <button
-                          onClick={() => handleVerify(problem.id)}
-                          disabled={loading === problem.id || !handle.trim()}
-                          className="text-[#009900] hover:text-[#99ff99] hover:translate-x-1 transform transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-                        >
-                          {loading === problem.id
-                            ? "[ Verifying... ]"
-                            : "[ Verify Solution ]"}
-                        </button>
-
-
-                        {message && message.problemId === problem.id && (
-                          <div
-                            className={`pl-4 py-2 border-l-2 ${message.type === "success"
-                              ? "border-[#00cc00] text-[#00cc00]"
-                              : "border-[#ff0000] text-[#ff9999]"
-                              }`}
-                          >
-                            {message.text}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-[#666666] pl-4">
-                  No active problems. Check back soon!
-                </p>
-              )}
-            </section>
 
             <section className="space-y-8">
               <h2 className="text-[#00cc00] text-xl border-b border-[#333333] pb-3">
@@ -330,8 +311,8 @@ export default function Home() {
                       <tr className="text-[#00cc00]">
                         <th className="pb-4 pr-6">Rank</th>
                         <th className="pb-4 pr-6">Handle</th>
-                        <th className="pb-4 pr-6">Avg Rank</th>
                         <th className="pb-4 pr-6">Solved</th>
+                        <th className="pb-4 pr-6">Total Penalty</th>
                         <th className="pb-4">Stars</th>
                       </tr>
                     </thead>
@@ -360,10 +341,8 @@ export default function Home() {
                               {entry.handle}
                             </a>
                           </td>
-                          <td className="py-3 pr-6 font-medium">
-                            {entry.avgRank.toFixed(2)}
-                          </td>
                           <td className="py-3 pr-6">{entry.totalSolved}</td>
+                          <td className="py-3 pr-6">{formatTime(entry.totalPenalty)}</td>
                           <td className="py-3">{renderStars(entry.totalSolved)}</td>
                         </tr>
                       ))}
@@ -378,69 +357,197 @@ export default function Home() {
             </section>
           </div>
 
-          <div className="w-full lg:w-80 xl:w-96 flex-shrink-0">
-            <section className="space-y-6 lg:sticky lg:top-8">
-              <h2 className="text-[#00cc00] text-xl border-b border-[#333333] pb-3">
-                --- Archive ---
-              </h2>
+          {/* RIGHT COLUMN (Sidebar) */}
+          {/* Added 'justify-between' to push Archive to top and Inputs to bottom */}
+          <div className="w-full lg:w-80 xl:w-96 flex flex-col justify-between">
 
-              {dates.length > 0 ? (
-                <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
-                  {dates.map((date) => {
-                    const isExpanded = expandedDates.has(date);
-                    const problems = groupedProblems[date];
+            {/* Archive Section - Moved to Top */}
+            <div>
 
-                    return (
-                      <div key={date} className="space-y-2">
-                        <button
-                          onClick={() => toggleDate(date)}
-                          className="w-full flex items-center gap-2 text-[#00cc00] hover:text-[#99ff99] transition-colors text-left text-sm"
-                        >
-                          {isExpanded ? (
-                            <ChevronDown className="w-3 h-3 flex-shrink-0" />
-                          ) : (
-                            <ChevronRight className="w-3 h-3 flex-shrink-0" />
-                          )}
-                          <span>{formatDateHeader(date)}</span>
-                          <span className="text-xs text-[#666666]">
-                            ({problems.length})
-                          </span>
-                        </button>
+              <section className="space-y-8">
+                <h2 className="text-[#00cc00] text-xl border-b border-[#333333] pb-3">
+                  --- Today's Challenge ---
+                </h2>
 
-                        {isExpanded && (
-                          <div className="pl-5 space-y-2">
-                            {problems.map((problem) => {
-                              const deadlinePassed = isDeadlinePassed(problem.postedAt);
-
-                              return (
-                                <div key={problem.id} className="text-sm">
-                                  <a
-                                    href={`https://codeforces.com/problemset/problem/${problem.cfContestId}/${problem.cfIndex}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-[#009900] hover:text-[#99ff99] transition-colors block"
-                                  >
-                                    {problem.cfContestId}{problem.cfIndex}. {problem.title}
-                                  </a>
-                                  {!deadlinePassed && (
-                                    <span className="text-xs text-[#666666]">
-                                      {getTimeRemaining(problem.postedAt)}
-                                    </span>
-                                  )}
-                                </div>
-                              );
-                            })}
+                {activeProblems.length > 0 ? (
+                  <div className="space-y-6 pl-4">
+                    {activeProblems.map((problem) => (
+                      <div key={problem.id} className="space-y-4">
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-3 text-sm text-[#666666]">
+                            <Clock className="w-4 h-4" />
+                            <span>{getTimeRemaining(problem.postedAt)}</span>
                           </div>
-                        )}
+                          <h3 className="text-[#ffff66] text-lg font-medium">
+                            {problem.cfContestId}{problem.cfIndex}. {problem.title}
+                          </h3>
+                        </div>
+
+                        <a
+                          href={`https://codeforces.com/gym/${problem.cfContestId}/problem/${problem.cfIndex}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 text-[#009900] hover:text-[#99ff99] hover:translate-x-1 transform transition-all"
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                          <span>[ View Problem on Codeforces ]</span>
+                        </a>
+
+                        <div className="space-y-4 pt-4">
+                          <button
+                            onClick={() => handleVerify(problem.id)}
+                            disabled={loading === problem.id || (!handle.trim() && uploadedHandles.length === 0)}
+                            className="text-[#009900] hover:text-[#99ff99] hover:translate-x-1 transform transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                          >
+                            {loading === problem.id
+                              ? "[ Verifying... ]"
+                              : "[ Verify Solution ]"}
+                          </button>
+
+
+                          {message && message.problemId === problem.id && (
+                            <div
+                              className={`pl-4 py-2 border-l-2 ${message.type === "success"
+                                ? "border-[#00cc00] text-[#00cc00]"
+                                : "border-[#ff0000] text-[#ff9999]"
+                                }`}
+                            >
+                              {message.text}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    );
-                  })}
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[#666666] pl-4">
+                    No active problems. Check back soon!
+                  </p>
+                )}
+              </section>
+              <section className="space-y-6 ">
+                <h2 className="text-[#00cc00] text-xl border-b border-[#333333] pb-3">
+                  --- Archive ---
+                </h2>
+
+                {dates.length > 0 ? (
+                  <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                    {dates.map((date) => {
+                      const isExpanded = expandedDates.has(date);
+                      const problems = groupedProblems[date];
+
+                      return (
+                        <div key={date} className="space-y-2">
+                          <button
+                            onClick={() => toggleDate(date)}
+                            className="w-full flex items-center gap-2 text-[#00cc00] hover:text-[#99ff99] transition-colors text-left text-sm"
+                          >
+                            {isExpanded ? (
+                              <ChevronDown className="w-3 h-3 flex-shrink-0" />
+                            ) : (
+                              <ChevronRight className="w-3 h-3 flex-shrink-0" />
+                            )}
+                            <span>{formatDateHeader(date)}</span>
+                            <span className="text-xs text-[#666666]">
+                              ({problems.length})
+                            </span>
+                          </button>
+
+                          {isExpanded && (
+                            <div className="pl-5 space-y-2">
+                              {problems.map((problem) => {
+                                const deadlinePassed = isDeadlinePassed(problem.postedAt);
+
+                                return (
+                                  <div key={problem.id} className="text-sm">
+                                    <a
+                                      href={`https://codeforces.com/gym/${problem.cfContestId}/problem/${problem.cfIndex}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-[#009900] hover:text-[#99ff99] transition-colors block"
+                                    >
+                                      {problem.cfContestId}{problem.cfIndex}. {problem.title}
+                                    </a>
+                                    {!deadlinePassed && (
+                                      <span className="text-xs text-[#666666]">
+                                        {getTimeRemaining(problem.postedAt)}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-[#666666] text-sm">
+                    No archived problems yet.
+                  </p>
+                )}
+              </section>
+            </div>
+            {/* Handle/Upload Section - Moved to Bottom */}
+            {/* Added mt-8 for some breathing room if content overlaps on small screens */}
+            <section className="space-y-4 mt-8">
+              <div className="space-y-3 pl-4">
+                <label htmlFor="handle" className="block text-[#cccccc]">
+                  Enter your Codeforces Handle:
+                </label>
+                <input
+                  id="handle"
+                  type="text"
+                  value={handle}
+                  onChange={(e) => setHandle(e.target.value)}
+                  placeholder="e.g., tourist"
+                  disabled={loading !== null || uploadedHandles.length > 0}
+                  className="w-full max-w-md bg-transparent border border-[#666666] px-4 py-3 text-[#cccccc] placeholder-[#666666] focus:border-[#00cc00] disabled:opacity-50 disabled:cursor-not-allowed"
+                />
+              </div>
+
+              <div className="pl-4 space-y-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-[#666666]">OR</span>
                 </div>
-              ) : (
-                <p className="text-[#666666] text-sm">
-                  No archived problems yet.
-                </p>
-              )}
+
+                <div className="space-y-3">
+                  <label className="block text-[#cccccc]">
+                    Upload .txt file with handles (one per line):
+                  </label>
+
+                  {fileName ? (
+                    <div className="flex items-center gap-3 max-w-md">
+                      <div className="flex-1 flex items-center gap-2 bg-[#1a1a2e] border border-[#00cc00] px-4 py-3 text-[#00cc00]">
+                        <Upload className="w-4 h-4" />
+                        <span className="text-sm">
+                          {fileName} ({uploadedHandles.length} handles)
+                        </span>
+                      </div>
+                      <button
+                        onClick={clearUploadedFile}
+                        className="p-3 border border-[#666666] hover:border-[#ff6666] text-[#666666] hover:text-[#ff6666] transition-colors"
+                        disabled={loading !== null}
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="inline-flex items-center gap-2 px-4 py-3 border border-[#666666] cursor-pointer hover:border-[#00cc00] hover:text-[#00cc00] text-[#cccccc] transition-colors max-w-md">
+                      <Upload className="w-4 h-4" />
+                      <span>Choose File</span>
+                      <input
+                        type="file"
+                        accept=".txt"
+                        onChange={handleFileUpload}
+                        className="hidden"
+                        disabled={loading !== null}
+                      />
+                    </label>
+                  )}
+                </div>
+              </div>
             </section>
           </div>
 
