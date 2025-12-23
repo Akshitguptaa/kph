@@ -240,9 +240,6 @@ export default function Home() {
             </header>
 
             <section className="space-y-4">
-              <h2 className="text-[#00cc00] text-xl border-b border-[#333333] pb-3">
-                --- Verification ---
-              </h2>
               <div className="space-y-3 pl-4">
                 <label htmlFor="handle" className="block text-[#cccccc]">
                   Enter your Codeforces Handle:

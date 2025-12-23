@@ -10,7 +10,7 @@ const sourceCodePro = Source_Code_Pro({
 });
 
 export const metadata: Metadata = {
-  title: "KPH Daily | Competitive Programming Tracker",
+  title: "KPH",
   description: "Daily competitive programming challenges from the KPH coding club. Solve, verify, and compete for the best average rank.",
 };
 
