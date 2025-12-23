@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+:root {
+  --terminal-bg: #0f0f23;
+  --terminal-text: #cccccc;
+  --terminal-green: #00cc00;
+  --terminal-gold: #ffff66;
+  --terminal-dim: #666666;
+  --terminal-link: #009900;
+  --terminal-link-hover: #99ff99;
+}
+
+@theme inline {
+  --color-terminal-bg: var(--terminal-bg);
+  --color-terminal-text: var(--terminal-text);
+  --color-terminal-green: var(--terminal-green);
+  --color-terminal-gold: var(--terminal-gold);
+  --color-terminal-dim: var(--terminal-dim);
+  --color-terminal-link: var(--terminal-link);
+  --color-terminal-link-hover: var(--terminal-link-hover);
+
+  --font-mono: var(--font-source-code-pro);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--terminal-bg);
+  color: var(--terminal-text);
+  font-family: var(--font-source-code-pro), "Courier New", monospace;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 204, 0, 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 204, 0, 0.5);
+}
+
+::selection {
+  background: var(--terminal-green);
+  color: var(--terminal-bg);
+}
+
+a,
+button,
+input {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+input:focus,
+button:focus {
+  outline: 2px solid var(--terminal-green);
+  outline-offset: 2px;
+}

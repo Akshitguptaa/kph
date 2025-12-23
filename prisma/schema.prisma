@@ -1,0 +1,48 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  handle      String       @id @unique
+  avgRank     Float        @default(0)
+  totalSolved Int          @default(0)
+  submissions Submission[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@map("users")
+}
+
+model DailyProblem {
+  id          Int          @id @default(autoincrement())
+  cfContestId Int
+  cfIndex     String
+  title       String
+  postedAt    DateTime     @default(now())
+  submissions Submission[]
+  createdAt   DateTime     @default(now())
+
+  @@unique([cfContestId, cfIndex])
+  @@index([postedAt])
+  @@map("daily_problems")
+}
+
+model Submission {
+  id          Int          @id @default(autoincrement())
+  timeTaken   Int
+  dailyRank   Int
+  userHandle  String
+  problemId   Int
+  user        User         @relation(fields: [userHandle], references: [handle], onDelete: Cascade)
+  problem     DailyProblem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  createdAt   DateTime     @default(now())
+
+  @@unique([userHandle, problemId])
+  @@index([problemId, timeTaken])
+  @@map("submissions")
+}
