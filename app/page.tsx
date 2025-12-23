@@ -141,25 +141,9 @@ export default function Home() {
     setMessage(null);
 
     try {
-      const problem = allProblems.find(p => p.id === problemId);
-      if (!problem || !problem.contestKey) {
-        setMessage({ type: "error", text: "Contest key not found for this problem", problemId });
-        setLoading(null);
-        return;
-      }
-
-      const { fetchAndParseSpectator } = await import('@/lib/spectator');
-      const spectatorData = await fetchAndParseSpectator(problem.contestKey);
-
-      if (!spectatorData) {
-        setMessage({ type: "error", text: "Failed to fetch from Codeforces. Try again.", problemId });
-        setLoading(null);
-        return;
-      }
-
       const requestBody = hasUploadedHandles
-        ? { handles: uploadedHandles, problemId, spectatorData }
-        : { handle: handle.trim(), problemId, spectatorData };
+        ? { handles: uploadedHandles, problemId }
+        : { handle: handle.trim(), problemId };
 
       const res = await fetch("/api/verify", {
         method: "POST",

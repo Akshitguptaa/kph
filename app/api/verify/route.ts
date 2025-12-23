@@ -5,34 +5,13 @@ import { getAcceptedSubmission } from "@/lib/codeforces";
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { handle, handles, problemId, standingsJson } = body;
+        const { handle, handles, problemId } = body;
 
         const handlesToCheck: string[] = handles || (handle ? [handle] : []);
 
         if (handlesToCheck.length === 0 || !problemId) {
             return NextResponse.json(
                 { error: "Handle(s) and problemId are required" },
-                { status: 400 }
-            );
-        }
-
-        if (!standingsJson) {
-            return NextResponse.json(
-                { error: "Standings data is required. Please provide contest standings JSON." },
-                { status: 400 }
-            );
-        }
-
-        let spectatorData;
-        try {
-            if (typeof standingsJson === 'string') {
-                spectatorData = JSON.parse(standingsJson);
-            } else {
-                spectatorData = standingsJson;
-            }
-        } catch (e) {
-            return NextResponse.json(
-                { error: "Invalid JSON format for standings data" },
                 { status: 400 }
             );
         }
@@ -74,7 +53,7 @@ export async function POST(request: NextRequest) {
 
             const submission = await getAcceptedSubmission(
                 handleToCheck,
-                spectatorData,
+                problem.cfContestId,
                 problem.cfIndex,
                 postedAtSeconds
             );
