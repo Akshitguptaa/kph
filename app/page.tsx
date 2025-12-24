@@ -22,6 +22,14 @@ interface LeaderboardEntry {
   totalPenalty: number;
 }
 
+interface LeaderboardResponse {
+  users: LeaderboardEntry[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
 export default function Home() {
   const [handle, setHandle] = useState("");
   const [loading, setLoading] = useState<number | null>(null);
@@ -33,6 +41,8 @@ export default function Home() {
   const [groupedProblems, setGroupedProblems] = useState<GroupedProblems>({});
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [serverTime, setServerTime] = useState<Date | null>(null);
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [uploadedHandles, setUploadedHandles] = useState<string[]>([]);
@@ -81,12 +91,14 @@ export default function Home() {
     }
   };
 
-  const fetchLeaderboard = async () => {
+  const fetchLeaderboard = async (page: number = 1) => {
     try {
-      const res = await fetch("/api/leaderboard");
+      const res = await fetch(`/api/leaderboard?page=${page}`);
       if (res.ok) {
-        const data = await res.json();
-        setLeaderboard(data);
+        const data: LeaderboardResponse = await res.json();
+        setLeaderboard(data.users);
+        setCurrentPage(data.page);
+        setTotalPages(data.totalPages);
       }
     } catch (error) {
     }
@@ -251,12 +263,10 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex flex-col justify-between px-6 py-12 sm:px-8 md:px-12 lg:px-16">
-      <div className="w-full">
-        {/* Removed 'items-start' here so the sidebar stretches to match the left column height */}
-        <div className="w-full flex flex-col lg:flex-row justify-between gap-12">
+      <div className="w-full lg:flex-1 flex flex-col">
+        <div className="w-full lg:flex-1 flex flex-col lg:flex-row justify-between gap-12">
 
           <div className="flex-1 w-full max-w-7xl space-y-16">
-            {/* ... Left Column Content (Header, Problem, Leaderboard) ... */}
             <header className="text-center space-y-6 relative">
               <pre
                 className="text-[#00cc00] text-sm sm:text-base md:text-lg leading-tight font-medium"
@@ -307,13 +317,16 @@ export default function Home() {
                           className="border-t border-[#333333] hover:bg-[#1a1a2e] transition-colors"
                         >
                           <td className="py-3 pr-6">
-                            {index === 0 ? (
-                              <span className="text-[#ffff66] font-bold">
-                                #{index + 1}
-                              </span>
-                            ) : (
-                              `#${index + 1}`
-                            )}
+                            {(() => {
+                              const globalRank = (currentPage - 1) * 20 + index + 1;
+                              return globalRank === 1 ? (
+                                <span className="text-[#ffff66] font-bold">
+                                  #{globalRank}
+                                </span>
+                              ) : (
+                                `#${globalRank}`
+                              );
+                            })()}
                           </td>
                           <td className="py-3 pr-6">
                             <a
@@ -329,7 +342,8 @@ export default function Home() {
                           <td className="py-3 pr-6">{formatTime(entry.totalPenalty)}</td>
                           <td className="py-3">{renderStars(entry.totalSolved)}</td>
                         </tr>
-                      ))}
+                      ))
+                      }
                     </tbody>
                   </table>
                 </div>
@@ -338,16 +352,33 @@ export default function Home() {
                   No submissions yet. Be the first!
                 </p>
               )}
+
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-4 pt-6">
+                  <button
+                    onClick={() => fetchLeaderboard(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="px-4 py-2 text-[#009900] hover:text-[#99ff99] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    [ ← Prev ]
+                  </button>
+                  <span className="text-[#cccccc]">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <button
+                    onClick={() => fetchLeaderboard(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                    className="px-4 py-2 text-[#009900] hover:text-[#99ff99] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    [ Next → ]
+                  </button>
+                </div>
+              )}
             </section>
           </div>
 
-          {/* RIGHT COLUMN (Sidebar) */}
-          {/* Added 'justify-between' to push Archive to top and Inputs to bottom */}
           <div className="w-full lg:w-80 xl:w-96 flex flex-col justify-between">
-
-            {/* Archive Section - Moved to Top */}
             <div>
-
               <section className="space-y-8">
                 <h2 className="text-[#00cc00] text-xl border-b border-[#333333] pb-3">
                   --- Today's Challenge ---
@@ -473,8 +504,6 @@ export default function Home() {
                 )}
               </section>
             </div>
-            {/* Handle/Upload Section - Moved to Bottom */}
-            {/* Added mt-8 for some breathing room if content overlaps on small screens */}
             <section className="space-y-4 mt-8">
               <div className="space-y-3 pl-4">
                 <label htmlFor="handle" className="block text-[#cccccc]">
@@ -537,7 +566,6 @@ export default function Home() {
 
         </div>
       </div>
-
       <footer className="text-center text-[#666666] text-sm pt-12 pb-6 mt-16 border-t border-[#333333]">
         <p>Knuth Programming Hub</p>
       </footer>
